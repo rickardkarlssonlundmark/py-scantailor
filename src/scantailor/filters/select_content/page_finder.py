@@ -15,6 +15,7 @@ import numpy as np
 from loguru import logger
 from numpy.typing import NDArray
 
+from scantailor.core.debug_images import DebugImages
 from scantailor.imageproc.binarize import (
     binarize_mokji,
     binarize_otsu,
@@ -35,6 +36,15 @@ _BACKGROUND_SHARE = 0.95
 # background, so that specks of paper-coloured dust on the bed are crossed.
 _MAX_GAP = 10
 
+# Upstream's debug labels of the binarisations ``_binarisations`` returns, in order.
+_BINARISATION_LABELS = (
+    "peakThreshold",
+    "OtsuThreshold",
+    "MokjiThreshold",
+    "SauvolaThreshold",
+    "WolfThreshold",
+)
+
 # The C++ defaults of these binarisations, which differ from the Python ones.
 _SAUVOLA_K = 0.34
 _WOLF_K = 0.3
@@ -47,6 +57,7 @@ def find_page_box(
     expected_size_mm: tuple[float, float] = (0.0, 0.0),
     tolerance: float = 0.1,
     outside: NDArray[np.bool_] | None = None,
+    dbg: DebugImages | None = None,
 ) -> PageBox | None:
     """Find the paper in a scan that shows background around it.
 
@@ -71,6 +82,8 @@ def find_page_box(
         outside (numpy.ndarray of numpy.bool | None): Pixels of ``image`` with
             no source pixel behind them, such as the corners exposed by a
             rotation. They count as background.
+        dbg (DebugImages | None): Receives the 150 dpi gray page and every
+            binarisation of it, including those an unknown size leaves unused.
 
     Returns:
         PageBox | None: The page in pixels of ``image``, or None when no box was
@@ -93,6 +106,12 @@ def find_page_box(
         cv2.resize(gray, (scaled_w, scaled_h), interpolation=interpolation),
         dtype=np.uint8,
     )
+    if dbg is not None:
+        dbg.add(scaled, "gray150")
+        for label, black in zip(
+            _BINARISATION_LABELS, _binarisations(scaled), strict=True
+        ):
+            dbg.add(black, label)
 
     width_mm, height_mm = expected_size_mm
     if width_mm <= 0 or height_mm <= 0:

@@ -5,6 +5,7 @@ from collections.abc import Callable, Hashable, Sequence
 import numpy as np
 from numpy.typing import NDArray
 
+from scantailor.core.debug_images import DebugImages
 from scantailor.core.models import PageId
 
 from .content_box import ContentBox, PageBox, PhysicalSize
@@ -140,6 +141,7 @@ class Filter:
         outside: NDArray[np.bool_] | Callable[[], NDArray[np.bool_]] | None = None,
         page_box: ContentBox | None = None,
         outside_key: Hashable | None = None,
+        dbg: DebugImages | None = None,
     ) -> ContentDetectionResult:
         """Detect content boundaries in an image.
 
@@ -154,6 +156,8 @@ class Filter:
             page_box: Area of the page in pixels of ``image``.
             outside_key: Identifies a callable ``outside`` so that it is only
                 called when the detection is not already remembered.
+            dbg (DebugImages | None): Receives the content finder's
+                intermediate images.
 
         Returns:
             ContentDetectionResult with detected box and confidence.
@@ -165,6 +169,7 @@ class Filter:
             page_box=page_box,
             outside=outside,
             outside_key=outside_key,
+            dbg=dbg,
         )
 
         if store_result:
@@ -182,6 +187,7 @@ class Filter:
         dpi: float = 300.0,
         store_result: bool = True,
         outside: NDArray[np.bool_] | Callable[[], NDArray[np.bool_]] | None = None,
+        dbg: DebugImages | None = None,
     ) -> PageBox:
         """Detect page boundaries in an image.
 
@@ -197,6 +203,8 @@ class Filter:
             outside (numpy.ndarray of numpy.bool | None): Pixels of ``image``
                 with no source pixel behind them, or a function making them;
                 they count as background around the paper.
+            dbg (DebugImages | None): Receives the page finder's intermediate
+                images.
 
         Returns:
             PageBox: The detected page, or the whole image when none was found.
@@ -209,6 +217,7 @@ class Filter:
             expected_size_mm=self._settings.get_page_detection_box(),
             tolerance=self._settings.get_page_detection_tolerance(),
             outside=outside() if callable(outside) else outside,
+            dbg=dbg,
         )
         if page_box is None:
             h, w = image.shape[:2]
@@ -267,6 +276,7 @@ class Filter:
         page_outline: Sequence[tuple[float, float]] | None = None,
         view_transform: NDArray[np.float64] | None = None,
         image_size: tuple[int, int] | None = None,
+        dbg: DebugImages | None = None,
     ) -> Params:
         """Process an image to detect content and page boundaries.
 
@@ -296,6 +306,8 @@ class Filter:
                 later change of view.
             image_size: (width, height) of the image a function ``image``
                 makes; required with a function, ignored with an array.
+            dbg (DebugImages | None): Receives the finders' intermediate
+                images when they run.
 
         Returns:
             Updated parameters with detected/stored boxes. When the page's
@@ -322,7 +334,12 @@ class Filter:
         if params.is_page_auto():
             if update_page:
                 page_box = self.detect_page(
-                    _made(image), page_id, dpi=dpi, store_result=False, outside=outside
+                    _made(image),
+                    page_id,
+                    dpi=dpi,
+                    store_result=False,
+                    outside=outside,
+                    dbg=dbg,
                 )
                 params = params.with_page_box(page_box, PageDetectionMode.AUTO)
                 update_content = update_content or not _content_within_page(params)
@@ -353,6 +370,7 @@ class Filter:
                     outside=outside,
                     page_box=params.page_box.to_content_box(),
                     outside_key=outside_key,
+                    dbg=dbg,
                 )
                 params = params.with_content_box(
                     result.content_box, ContentDetectionMode.AUTO
