@@ -3,7 +3,13 @@
 import numpy as np
 import pytest
 
-from scantailor.imageproc.binary_morphology import open_brick, seed_fill
+from scantailor.imageproc.binary_morphology import (
+    hit_miss_replace,
+    hit_miss_replace_all_directions,
+    open_brick,
+    seed_fill,
+)
+from tests.filters.output import cpp_reference as output_cpp
 from tests.filters.page_split import cpp_reference as cpp
 
 
@@ -98,3 +104,76 @@ def test_seed_fill_of_an_empty_image_is_empty():
     empty = np.zeros((0, 4), dtype=bool)
 
     assert seed_fill(empty, empty).shape == (0, 4)
+
+
+def _speckled(height: int, width: int, seed: int) -> np.ndarray:
+    """Half the pixels black at random, so matches crowd and the turn order shows."""
+    return np.random.default_rng(seed).random((height, width)) < 0.5
+
+
+def _rows(pattern: str, width: int) -> tuple[str, ...]:
+    return tuple(pattern[i : i + width] for i in range(0, len(pattern), width))
+
+
+_OUTPUT_PATTERNS = pytest.mark.parametrize(
+    ("pattern", "width", "height"),
+    output_cpp.SMOOTHING_PATTERNS,
+    ids=[f"pattern{i}" for i in range(len(output_cpp.SMOOTHING_PATTERNS))],
+)
+
+
+class TestHitMissReplace:
+    @_OUTPUT_PATTERNS
+    @pytest.mark.parametrize("seed", [0, 1, 2])
+    def test_all_directions_matches_upstream(
+        self, pattern: str, width: int, height: int, seed: int
+    ) -> None:
+        image = _speckled(60, 80, seed)
+        expected = image.copy()
+        output_cpp.hit_miss_replace_all_directions(expected, pattern, width, height)
+
+        got = hit_miss_replace_all_directions(image, _rows(pattern, width))
+
+        np.testing.assert_array_equal(got, expected)
+
+    @_OUTPUT_PATTERNS
+    @pytest.mark.parametrize("quarter_turns", [0, 1, 2, 3])
+    def test_a_lone_match_in_any_direction_recolours_its_marked_cells(
+        self, pattern: str, width: int, height: int, quarter_turns: int
+    ) -> None:
+        cells = np.rot90(
+            np.array([list(row) for row in _rows(pattern, width)]), quarter_turns
+        )
+        image = np.pad(np.isin(cells, ["X", "-"]), 2)
+
+        got = hit_miss_replace_all_directions(image, _rows(pattern, width))
+
+        np.testing.assert_array_equal(got, np.pad(np.isin(cells, ["X", "+"]), 2))
+
+    def test_a_bump_two_pixels_wide_does_not_match_a_one_pixel_pattern(self) -> None:
+        image = np.zeros((5, 9), dtype=bool)
+        image[1, 1:8] = True
+        image[2, 4:6] = True
+
+        np.testing.assert_array_equal(
+            hit_miss_replace(image, ("XXX", " - ", "   ")), image
+        )
+
+    def test_a_notch_in_the_top_row_is_filled_as_the_outside_counts_as_white(
+        self,
+    ) -> None:
+        image = np.zeros((4, 5), dtype=bool)
+        image[0:2, 1:4] = True
+        image[0, 2] = False
+
+        got = hit_miss_replace(image, ("   ", "X+X", "XXX"))
+
+        assert got[0, 2]
+
+    def test_does_not_modify_its_input(self) -> None:
+        image = _speckled(20, 20, seed=4)
+        before = image.copy()
+
+        hit_miss_replace_all_directions(image, ("   ", "X+X", "XXX"))
+
+        np.testing.assert_array_equal(image, before)
