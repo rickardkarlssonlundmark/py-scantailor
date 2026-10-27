@@ -1,4 +1,4 @@
-"""Whole-page Output results against digests taken before the stage was parallelised."""
+"""Whole-page Output against stored digests, so a speed-up cannot move a pixel."""
 
 import hashlib
 from pathlib import Path
@@ -18,9 +18,11 @@ _NOISE = 5
 _OUTPUT_DPI = 200
 
 # (colour mode, binarisation) -> first 16 hex digits of the SHA-256 of the output.
+# Taken before the stage was parallelised; the black-and-white ones were retaken
+# when edge smoothing was made to follow upstream.
 _REFERENCES = {
-    (ColorMode.BLACK_AND_WHITE, BinarizationMethod.OTSU): "0243c5c360d748e7",
-    (ColorMode.BLACK_AND_WHITE, BinarizationMethod.WOLF): "9d03ab9a327f1a32",
+    (ColorMode.BLACK_AND_WHITE, BinarizationMethod.OTSU): "4757747f9e1fa6af",
+    (ColorMode.BLACK_AND_WHITE, BinarizationMethod.WOLF): "96328866eb3809ce",
     (ColorMode.COLOR_GRAYSCALE, BinarizationMethod.OTSU): "ddd377a7b9e15086",
 }
 
